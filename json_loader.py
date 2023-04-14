@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-f = open('json_test_3.json', 'r')
+f = open('signal_absorption_time_series.json', 'r')
 write_file = open('array_output.txt', 'a')
 json_data = json.loads(f.read())
 
@@ -17,11 +17,11 @@ def parse_signal_absorption_data(signal_absorption_data):
         while j < len(channels):
             channel_data = channels[j]
             channel = channel_data["channel"]
-            activation_data = channel_data["activation_data"]
+            timestamp_data = channel_data["timestamp_data"]
+            signal_absorption = channel_data["signal_absorption"]
             k = 0
-            while k < len(activation_data):
-                data_point = activation_data[k]
-                parsed_data.append({"guid": guid, "channel": channel, "timestamp": data_point["timestamp"], "signal_absorption": float(data_point["signal_absorption"])})
+            while k < len(timestamp_data):
+                parsed_data.append({"guid": guid, "channel": channel, "timestamp": timestamp_data[k], "signal_absorption": float(signal_absorption[k])})
                 k += 1
             j += 1
     return parsed_data
@@ -36,15 +36,16 @@ df2 = pd.DataFrame(signal_absorption_data)
 #df = df#.query('guid in @guid_list & channel in @channel_list')
 print(df2)
 
-array_tester = [o[0]['activation_data'] for o in df2['channels'].values]
+# Arbitrarily using channel 0
+array_tester = [o[0] for o in df2['channels'].values]
 data_by_density = []
 
 hide_zeroes = True
 
 for i in range(len(array_tester)):
     density_channel_data = []
-    for j in range(len(array_tester[i])):
-        density_channel_data.append(array_tester[i][j]['signal_absorption'])
+    for j in range(len(array_tester[i]['signal_absorption'])):
+        density_channel_data.append(array_tester[i]['signal_absorption'][j])
     if not hide_zeroes or len([num for num in density_channel_data if num > 0]) > 0:
         data_by_density.append(density_channel_data)
 
