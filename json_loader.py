@@ -2,14 +2,15 @@ import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from signal_absorption_time_series_helper import get_timestamp_start_and_end_index, consolidate_combined_channel_signal_activation_data
+from signal_absorption_time_series_helper import get_timestamp_start_and_end_index, consolidate_combined_channel_signal_activation_data, \
+    parse_consolidated_signal_activation_data_into_densities, plot_x_and_y_axis_labels, get_mask_from_signal_activation_data
 
 json_data = json.loads(open('5_4_5.json', 'r').read())
 df = pd.DataFrame(json_data["signal_absorption_time_series_data"])
 phoneme_timestamps = json_data["phoneme_timestamps"]
 regions = df.region.unique()
 
-hide_zeroes = True
+hide_zeroes = False
 exploratory = True
 combine_channels = True
 
@@ -28,93 +29,40 @@ for region in regions:
         region_data['name_length'] = region_data['name'].map(len)
         region_data = region_data.sort_values(['name_length', 'name'])
 
-    fig, ax = plt.subplots()
-
-    data_by_density = []
-    consolidated_signal_activation_data = []
     density_names = []
+    consolidated_signal_activation_data = []
+
     num_channels = len(region_data['channels'].values[0])
+
     if combine_channels:
         consolidated_signal_activation_data = consolidate_combined_channel_signal_activation_data(num_channels, region_data)
         density_names.extend(o for o in region_data['name'])
     else:
         i = 0
         while i < num_channels:
-            consolidated_signal_activation_data.extend(o[i] for o in region_data['channels'].values) #[{'primary_channel': [0,1], 'timestamp_data': [0, 0.5], 'exploratory_signal_absorption': [1, .1], 'activating_signal_absorption': [.1, .2]
+            consolidated_signal_activation_data.extend(o[i] for o in region_data['channels'].values)
             density_names.extend(o + (str(':') + str(i) if region == "Phoneme Density" else "") for o in region_data['name'])
             i += 1
+
     consolidated_signal_activation_data.reverse()
     density_names.reverse()
-    preserved_density_names = []
-    for i in range(len(consolidated_signal_activation_data)):
-        channel_signal_absorption_data = []
-        signal_absorption_index = timestamp_selection_start_index
-        if exploratory:
-            while signal_absorption_index < timestamp_selection_end_index:
-                channel_signal_absorption_data.append(consolidated_signal_activation_data[i]['exploratory_signal_absorption'][signal_absorption_index])
-                signal_absorption_index += 1
-        else:
-            while signal_absorption_index < timestamp_selection_end_index:
-                channel_signal_absorption_data.append(consolidated_signal_activation_data[i]['activating_signal_absorption'][signal_absorption_index])
-                signal_absorption_index += 1
-        nonzero_value_count = len([num for num in channel_signal_absorption_data if num > 0])
-        if not hide_zeroes or nonzero_value_count > 0:
-            for z in range(len(channel_signal_absorption_data)):
-                if channel_signal_absorption_data[z] != 0:
-                    print("")
-            preserved_density_names.append(density_names[i])
-            data_by_density.append(channel_signal_absorption_data)
 
-    plt.xlabel('Phoneme')
-    plt.ylabel('Density')
-    ylabels = []
-    yticks = []
-    guids = np.unique(df['guid'])
-    for i in range(len(preserved_density_names)):
-        ylabels.append(preserved_density_names[i])
-        yticks.append(i)
+    data_by_density, preserved_density_names = parse_consolidated_signal_activation_data_into_densities(consolidated_signal_activation_data, timestamp_selection_start_index, timestamp_selection_end_index, exploratory, hide_zeroes, density_names)
 
-    xticks = []
-    xlabels = []
-    h_starred = False
-    for phoneme_timestamp in phoneme_timestamps:
-        average_timestamp = round((int(phoneme_timestamp["start_time"]) + int(phoneme_timestamp["end_time"])) / 2)
-        if average_timestamp > selected_start_time and average_timestamp < selected_end_time:
-            # doubled because each index is only a half ms, so if we want to convert from ms to index we x2
-            if phoneme_timestamp["phoneme"] == "h#" or h_starred:
-                xticks.append((average_timestamp - selected_start_time) * 2)
-                xlabels.append(phoneme_timestamp["phoneme"])
-    plt.xticks(xticks, xlabels)
-    plt.yticks(yticks, ylabels)
+    fig, ax = plt.subplots()
 
-    plt.title(("Exploratory " if exploratory else "Activating ") + "Signal Activation Mapping ("
-              + str(region) + ": " + str(selected_start_time) + "ms to " + str(selected_end_time) + "ms)")
+    plot_x_and_y_axis_labels("Phoneme", "Density", preserved_density_names, phoneme_timestamps, selected_start_time,
+                             selected_end_time, exploratory, region)
 
     num_cols = len(data_by_density[0])
     num_rows = len(data_by_density)
     mask_values = [[1]*num_cols for i in range(num_rows)]
-    if combine_channels:
-        num_cols = len(consolidated_signal_activation_data[0]['highest_exploratory_signal_channel'])
-        num_rows = len(consolidated_signal_activation_data)
-        #mask_values = [[1]*num_cols for i in range(num_rows)]
-        mask_values = []
-        data_by_density = []
-        for i in range(num_rows):
-            combined_signal_absorption_data = []
-            current_density_data = consolidated_signal_activation_data[i]
-            nonzero_value_count = len([num for num in current_density_data['exploratory_signal_absorption'] if num > 0]) if exploratory else len([num for num in current_density_data['activating_signal_absorption'] if num > 0])
-            if not hide_zeroes or nonzero_value_count > 0:
-                mask_values.append([1]*num_cols)
-                for j in range(num_cols):
-                    if exploratory:
-                        combined_signal_absorption_data.append(current_density_data['exploratory_signal_absorption'][j])
-                    else:
-                        combined_signal_absorption_data.append(current_density_data['activating_signal_absorption'][j])
-                    if (exploratory and current_density_data['highest_exploratory_signal_channel'][j] != 0) or (not exploratory and current_density_data['highest_activating_signal_channel'][j] == 1):
-                        mask_values[len(mask_values) - 1][j] = 0
-                data_by_density.append(combined_signal_absorption_data)
-    maskArr = np.ma.masked_array(data_by_density, mask=mask_values)
+
     ax.imshow(data_by_density, cmap='Blues', aspect="auto", interpolation="nearest")
-    ax.imshow(maskArr, cmap='Reds', aspect="auto", interpolation="nearest")
+
+    if combine_channels:
+        mask_arr = get_mask_from_signal_activation_data(consolidated_signal_activation_data, exploratory, hide_zeroes, data_by_density)
+        ax.imshow(mask_arr, cmap='Reds', aspect="auto", interpolation="nearest")
+
     plt.savefig(region + '.png')
     plt.show()
