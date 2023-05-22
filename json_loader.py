@@ -2,80 +2,46 @@ import json
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from signal_absorption_time_series_helper import get_timestamp_start_and_end_index, consolidate_combined_channel_signal_activation_data
 
-f = open('5_4_5.json', 'r')
-json_data = json.loads(f.read())
+json_data = json.loads(open('5_4_5.json', 'r').read())
 df = pd.DataFrame(json_data["signal_absorption_time_series_data"])
 phoneme_timestamps = json_data["phoneme_timestamps"]
 regions = df.region.unique()
 
 hide_zeroes = True
-exploratory = False
+exploratory = True
 combine_channels = True
 
 example_timestamp_data = df['channels'].values[0][0]['timestamp_data']
-
 selected_start_time = 0
 selected_end_time = 38000
-timestamp_selection_start_index = 0
-timestamp_selection_end_index = 0
-#multiply by 2 because currently the timestamps are recorded at half-millisecond intervals (should somehow change that maybe?...)
-while timestamp_selection_start_index < len(example_timestamp_data) and example_timestamp_data[timestamp_selection_start_index] < selected_start_time and timestamp_selection_start_index < selected_end_time * 2:
-    timestamp_selection_start_index += 1
-while timestamp_selection_end_index < len(example_timestamp_data) and example_timestamp_data[timestamp_selection_end_index] < selected_end_time and timestamp_selection_end_index < selected_end_time * 2:
-    timestamp_selection_end_index += 1
-
+timestamp_selection_start_index, timestamp_selection_end_index = get_timestamp_start_and_end_index(selected_start_time, selected_end_time, example_timestamp_data)
 selected_end_time = min(round(example_timestamp_data[len(example_timestamp_data) - 1]), selected_end_time)
 
 for region in regions:
+    region_data = df.loc[df['region'] == region]
+
     if region == "Phoneme Density":
         exploratory = False
-    fig, ax = plt.subplots()
-    region_data = df.loc[df['region'] == region]
     if region == "Pitch Transforms":
         region_data['name_length'] = region_data['name'].map(len)
         region_data = region_data.sort_values(['name_length', 'name'])
+
+    fig, ax = plt.subplots()
 
     data_by_density = []
     consolidated_signal_activation_data = []
     density_names = []
     num_channels = len(region_data['channels'].values[0])
     if combine_channels:
-        for density_data in region_data['channels'].values:
-            highest_exploratory_signal_absorption = []
-            highest_activating_signal_absorption = []
-            highest_exploratory_signal_channel = []
-            highest_activating_signal_channel = []
-            for i in range(len(density_data[0]['timestamp_data'])):
-                timestamp_highest_exploratory_signal_absorption = 0
-                timestamp_highest_activating_signal_absorption = 0
-                highest_exploratory_signal_channel.append(0)
-                highest_activating_signal_channel.append(0)
-                highest_exploratory_signal_absorption.append(0)
-                highest_activating_signal_absorption.append(0)
-                j = 0
-                while j < num_channels:
-                    current_exploratory_signal_absorption = density_data[j]['exploratory_signal_absorption'][i]
-                    current_activating_signal_absorption = density_data[j]['activating_signal_absorption'][i]
-                    if j == 1 and current_exploratory_signal_absorption != 0:
-                        print("")
-                    if current_exploratory_signal_absorption > timestamp_highest_exploratory_signal_absorption:
-                        highest_exploratory_signal_channel[i] = j
-                        highest_exploratory_signal_absorption[i] = current_exploratory_signal_absorption
-                        timestamp_highest_exploratory_signal_absorption = current_exploratory_signal_absorption
-                    if current_activating_signal_absorption > timestamp_highest_activating_signal_absorption:
-                        highest_activating_signal_channel[i] = j
-                        highest_activating_signal_absorption[i] = current_activating_signal_absorption
-                        timestamp_highest_activating_signal_absorption = current_activating_signal_absorption
-                    j += 1
-
-            consolidated_signal_activation_data.append({"timestamp_data": density_data[0]["timestamp_data"], "highest_exploratory_signal_channel": highest_exploratory_signal_channel, "highest_activating_signal_channel": highest_activating_signal_channel, "exploratory_signal_absorption": highest_exploratory_signal_absorption, "activating_signal_absorption": highest_activating_signal_absorption})
-        density_names.extend(o + str(':') + (str(i) if region == "Phoneme Density" else "") for o in region_data['name'])
+        consolidated_signal_activation_data = consolidate_combined_channel_signal_activation_data(num_channels, region_data)
+        density_names.extend(o for o in region_data['name'])
     else:
         i = 0
         while i < num_channels:
             consolidated_signal_activation_data.extend(o[i] for o in region_data['channels'].values) #[{'primary_channel': [0,1], 'timestamp_data': [0, 0.5], 'exploratory_signal_absorption': [1, .1], 'activating_signal_absorption': [.1, .2]
-            density_names.extend(o + str(':') + (str(i) if region == "Phoneme Density" else "") for o in region_data['name'])
+            density_names.extend(o + (str(':') + str(i) if region == "Phoneme Density" else "") for o in region_data['name'])
             i += 1
     consolidated_signal_activation_data.reverse()
     density_names.reverse()
@@ -152,4 +118,3 @@ for region in regions:
     ax.imshow(maskArr, cmap='Reds', aspect="auto", interpolation="nearest")
     plt.savefig(region + '.png')
     plt.show()
-
