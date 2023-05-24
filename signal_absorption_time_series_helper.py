@@ -56,14 +56,17 @@ def parse_consolidated_signal_activation_data_into_densities(consolidated_signal
     for i in range(len(consolidated_signal_activation_data)):
         channel_signal_absorption_data = []
         signal_absorption_index = timestamp_selection_start_index
-        if exploratory:
-            while signal_absorption_index < timestamp_selection_end_index:
-                channel_signal_absorption_data.append(consolidated_signal_activation_data[i]['exploratory_signal_absorption'][signal_absorption_index])
-                signal_absorption_index += 1
-        else:
-            while signal_absorption_index < timestamp_selection_end_index:
-                channel_signal_absorption_data.append(consolidated_signal_activation_data[i]['activating_signal_absorption'][signal_absorption_index])
-                signal_absorption_index += 1
+        try:
+            if exploratory:
+                while signal_absorption_index < timestamp_selection_end_index:
+                    channel_signal_absorption_data.append(consolidated_signal_activation_data[i]['exploratory_signal_absorption'][signal_absorption_index])
+                    signal_absorption_index += 1
+            else:
+                while signal_absorption_index < timestamp_selection_end_index:
+                    channel_signal_absorption_data.append(consolidated_signal_activation_data[i]['activating_signal_absorption'][signal_absorption_index])
+                    signal_absorption_index += 1
+        except Exception as e:
+            print(e)
         nonzero_value_count = len([num for num in channel_signal_absorption_data if num > 0])
         if not hide_zeroes or nonzero_value_count > 0:
             preserved_density_names.append(density_names[i])
@@ -104,7 +107,7 @@ def plot_x_and_y_axis_labels(x_title, y_title, preserved_density_names, phoneme_
     plt.title(("Exploratory " if exploratory else "Activating ") + "Signal Activation Mapping ("
               + str(region) + ": " + str(selected_start_time) + "ms to " + str(selected_end_time) + "ms)")
 
-def get_mask_from_signal_activation_data(consolidated_signal_activation_data, exploratory, hide_zeroes, data_by_density):
+def get_mask_from_signal_activation_data(consolidated_signal_activation_data, exploratory, hide_zeroes, data_by_density, masking_channel):
     num_cols = len(consolidated_signal_activation_data[0]['highest_exploratory_signal_channel'])
     num_rows = len(consolidated_signal_activation_data)
     mask_values = []
@@ -116,8 +119,8 @@ def get_mask_from_signal_activation_data(consolidated_signal_activation_data, ex
         if not hide_zeroes or nonzero_value_count > 0:
             mask_values.append([1] * num_cols)
             for j in range(num_cols):
-                if (exploratory and current_density_data['highest_exploratory_signal_channel'][j] != 0) or (
-                        not exploratory and current_density_data['highest_activating_signal_channel'][j] == 1):
+                if (exploratory and current_density_data['highest_exploratory_signal_channel'][j] == masking_channel) or (
+                        not exploratory and current_density_data['highest_activating_signal_channel'][j] == masking_channel):
                     mask_values[len(mask_values) - 1][j] = 0
     mask_arr = np.ma.masked_array(data_by_density, mask=mask_values)
     return mask_arr
